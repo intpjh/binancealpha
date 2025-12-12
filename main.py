@@ -211,7 +211,7 @@ async def main():
         await client.start(phone=phone_number)
 
     logging.info("텔레그램 클라이언트 시작됨.")
-    logging.info(f"모니터링 대상: {source_bot_id}")
+    logging.info(f"모니터링 대상: {', '.join(map(str, source_bot_ids))}")
     logging.info(f"매수 명령 대상: {target_bot_id}")
     logging.info(f"매수 금액: {GMGN_BUY_AMOUNT} BNB")
     logging.info("종료하려면 Ctrl+C를 누르세요...")
