@@ -1,0 +1,57 @@
+name: Build AlphaSniper
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: AlphaSniper-linux
+            asset_name: AlphaSniper-linux
+          - os: windows-latest
+            artifact_name: AlphaSniper-windows.exe
+            asset_name: AlphaSniper-windows.exe
+          - os: macos-latest
+            artifact_name: AlphaSniper-macos
+            asset_name: AlphaSniper-macos
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Build Executable
+      run: |
+        pyinstaller --clean --onefile --name=AlphaSniper --hidden-import=telethon main.py
+
+    - name: Rename and Move Artifact (Linux/MacOS)
+      if: runner.os != 'Windows'
+      run: |
+        mv dist/AlphaSniper dist/${{ matrix.asset_name }}
+
+    - name: Rename and Move Artifact (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        move dist\AlphaSniper.exe dist\${{ matrix.asset_name }}
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.asset_name }}
+        path: dist/${{ matrix.asset_name }}

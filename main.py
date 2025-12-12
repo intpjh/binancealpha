@@ -3,15 +3,73 @@ import re
 import logging
 import asyncio
 import signal
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 from telethon import TelegramClient, events
 
 # 로깅 설정
 logging.basicConfig(format='[%(levelname) 5s/%(asctime)s] %(name)s: %(message)s',
                     level=logging.INFO)
 
-# .env 파일에서 환경 변수 로드
-load_dotenv()
+# --- Interactive Setup Wizard ---
+ENV_PATH = ".env"
+
+def ask_input(prompt, default=None):
+    """사용자 입력을 요청합니다. 기본값이 있으면 함께 표시합니다."""
+    if default:
+        user_input = input(f"{prompt} (기본값: {default}): ").strip()
+        return user_input if user_input else default
+    else:
+        while True:
+            user_input = input(f"{prompt}: ").strip()
+            if user_input:
+                return user_input
+            print("값을 입력해야 합니다.")
+
+def run_setup_wizard():
+    """환경 변수 설정을 위한 대화형 마법사"""
+    print("\n" + "="*40)
+    print("  AlphaSniper 초기 설정 마법사")
+    print("="*40 + "\n")
+    print("설정 파일(.env)이 없거나 필수 값이 부족하여 설정을 시작합니다.")
+    print("Telegram API 정보가 필요합니다. (https://my.telegram.org/apps 에서 확인 가능)\n")
+
+    # 기존 값 로드 (있다면)
+    load_dotenv(ENV_PATH)
+
+    api_id = ask_input("1. API ID (숫자)", os.getenv("API_ID"))
+    api_hash = ask_input("2. API HASH (문자열)", os.getenv("API_HASH"))
+    phone_number = ask_input("3. 내 전화번호 (예: +821012345678)", os.getenv("PHONE_NUMBER"))
+    
+    print("\n--- 봇 설정 ---")
+    source_bot = ask_input("4. 감시할 채널 ID/Username", os.getenv("SOURCE_BOT_ID", "@NewListingsFeed"))
+    target_bot = ask_input("5. 매수 명령 보낼 봇 ID/Username", os.getenv("TARGET_BOT_ID", "@GMGN_bsc_bot"))
+    buy_amount = ask_input("6. 매수 금액 (BNB)", os.getenv("GMGN_BUY_AMOUNT", "0.1"))
+
+    # .env 파일 저장
+    with open(ENV_PATH, "w", encoding="utf-8") as f:
+        f.write("# AlphaSniper Configuration\n")
+        f.write(f"API_ID={api_id}\n")
+        f.write(f"API_HASH={api_hash}\n")
+        f.write(f"PHONE_NUMBER={phone_number}\n")
+        f.write(f"SESSION_NAME=alpha_sniper\n")
+        f.write(f"SOURCE_BOT_ID={source_bot}\n")
+        f.write(f"TARGET_BOT_ID={target_bot}\n")
+        f.write(f"GMGN_BUY_AMOUNT={buy_amount}\n")
+    
+    print(f"\n✅ 설정이 '{ENV_PATH}' 파일에 저장되었습니다!\n")
+    return True
+
+# .env 파일 로드 전 검사
+if not os.path.exists(ENV_PATH):
+    run_setup_wizard()
+load_dotenv(ENV_PATH)
+
+# 필수 값 확인 및 재실행 유도
+required_vars = ["API_ID", "API_HASH", "SOURCE_BOT_ID", "TARGET_BOT_ID"]
+if not all(os.getenv(v) for v in required_vars):
+    print("❌ 필수 환경 변수가 누락되었습니다.")
+    run_setup_wizard()
+    load_dotenv(ENV_PATH) # 다시 로드
 
 # --- 설정 상수 ---
 # 매수량 설정 (기본값 0.1 BNB)
@@ -27,12 +85,12 @@ BINANCE_URL_REGEX = r"https://www\.binance\.com/en/binancewallet/(0x[a-fA-F0-9]{
 # --- 환경 변수 가져오기 ---
 api_id = os.getenv("API_ID")
 api_hash = os.getenv("API_HASH")
-session_name = os.getenv("SESSION_NAME", "new_listings_monitor")
+session_name = os.getenv("SESSION_NAME", "alpha_sniper")
 source_bot_id_str = os.getenv("SOURCE_BOT_ID") # 모니터링할 채널/봇 (예: @NewListingsFeed)
 target_bot_id_str = os.getenv("TARGET_BOT_ID") # 매수 명령을 보낼 봇 (예: @GMGN_bsc_bot)
 phone_number = os.getenv("PHONE_NUMBER")
 
-# 필수 환경 변수 확인
+# 필수 환경 변수 확인 (위에서 했지만 안전장치)
 if not all([api_id, api_hash, source_bot_id_str, target_bot_id_str]):
     raise ValueError("필수 환경 변수(API_ID, API_HASH, SOURCE_BOT_ID, TARGET_BOT_ID)가 .env 파일에 설정되지 않았습니다.")
 
