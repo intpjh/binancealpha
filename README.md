@@ -29,7 +29,28 @@
 처음 프로그램을 실행하면 자동으로 설정 마법사가 시작됩니다. 화면의 안내에 따라 API 정보 등을 입력하면 `.env` 파일이 자동으로 생성됩니다.
 
 ### 방법 2: 수동 설정
-`.env` 파일을 직접 생성하고 아래 내용을 채워주세요. (형식은 기존과 동일)
+`.env` 파일을 직접 생성하고 아래 내용을 채워주세요.
+
+```env
+# 1. 텔레그램 API 정보 (https://my.telegram.org/apps 에서 발급)
+API_ID=1234567
+API_HASH=abcdefg1234567...
+
+# 2. 세션 이름 (자유롭게 지정)
+SESSION_NAME=alpha_sniper
+
+# 3. 감시할 채널 (NewListingsFeed)
+SOURCE_BOT_ID=@NewListingsFeed
+
+# 4. 매수 명령을 보낼 스나이퍼 봇
+TARGET_BOT_ID=@GMGN_bsc_bot
+
+# 5. 매수 금액 (BNB 단위)
+GMGN_BUY_AMOUNT=0.1
+
+# 6. 본인 전화번호 (국가번호 포함, 최초 로그인 시 필요)
+PHONE_NUMBER=+821012345678
+```
 
 ## 실행 방법
 
