@@ -8,6 +8,9 @@
 - **Binance Wallet CA 추출**: `https://www.binance.com/en/binancewallet/.../bsc` 형식의 URL에서 Contract Address(CA)를 자동으로 추출합니다.
 - **GMGN 봇 연동**: 추출된 CA로 즉시 `/buy [CA] [Amount]` 명령을 GMGN 스나이퍼 봇에게 전송합니다.
 - **자동 재시도**: 일시적인 전송 실패 시 자동으로 재시도하여 매수 성공률을 높입니다.
+- **다중 채널 지원**: `@NewListingsFeed`, `@Newsbothub` 등 여러 채널을 동시 감시할 수 있습니다.
+- **스마트 파싱**: 'Binance alpha' 키워드가 포함된 Newsbothub 스타일 메시지도 자동으로 분석합니다.
+- **중복 방지**: 이미 매수 명령을 보낸 CA는 세션 내에서 다시 처리하지 않아 중복 매수를 방지합니다.
 
 ## 설치 방법
 
@@ -39,8 +42,8 @@ API_HASH=abcdefg1234567...
 # 2. 세션 이름 (자유롭게 지정)
 SESSION_NAME=alpha_sniper
 
-# 3. 감시할 채널 (NewListingsFeed)
-SOURCE_BOT_ID=@NewListingsFeed
+# 3. 감시할 채널 (여러 개인 경우 콤마로 구분)
+SOURCE_BOT_ID=@NewListingsFeed,@Newsbothub
 
 # 4. 매수 명령을 보낼 스나이퍼 봇
 TARGET_BOT_ID=@GMGN_bsc_bot
