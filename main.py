@@ -135,6 +135,9 @@ async def shutdown(sig, loop):
     await asyncio.gather(*tasks, return_exceptions=True)
     loop.stop()
 
+# --- 중복 처리 방지 셋 ---
+processed_cas = set()
+
 # --- 이벤트 핸들러 ---
 @client.on(events.NewMessage(chats=source_bot_id))
 async def handler(event):
@@ -152,6 +155,12 @@ async def handler(event):
     
     if match:
         bsc_ca = match.group(1)
+        
+        # 중복 방지 체크
+        if bsc_ca in processed_cas:
+            logging.info(f"이미 처리된 CA입니다. 건너뜁니다: {bsc_ca}")
+            return
+            
         logging.info(f"Binance Wallet URL 발견! 추출된 CA: {bsc_ca}")
         
         # 매수 명령 구성 (/buy [CA] [Amount])
@@ -159,7 +168,9 @@ async def handler(event):
         command_to_send = f"/buy {bsc_ca} {GMGN_BUY_AMOUNT}"
         
         logging.info(f"매수 명령 전송 시도: {command_to_send}")
-        await send_message_with_retry(target_bot_id, command_to_send, "BUY 명령")
+        if await send_message_with_retry(target_bot_id, command_to_send, "BUY 명령"):
+            # 전송 성공 시에만 처리된 목록에 추가 (혹은 시도만 해도 추가할지 결정, 여기선 시도 시 추가)
+            processed_cas.add(bsc_ca)
     else:
         # logging.info("Binance Wallet URL을 포함하지 않은 메시지입니다.")
         pass
