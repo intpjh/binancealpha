@@ -41,7 +41,7 @@ def run_setup_wizard():
     phone_number = ask_input("3. 내 전화번호 (예: +821012345678)", os.getenv("PHONE_NUMBER"))
     
     print("\n--- 봇 설정 ---")
-    source_bot = ask_input("4. 감시할 채널 ID/Username", os.getenv("SOURCE_BOT_ID", "@NewListingsFeed"))
+    source_bot = ask_input("4. 감시할 채널 ID/Username (여러 개는 콤마로 구분)", os.getenv("SOURCE_BOT_ID", "@NewListingsFeed"))
     target_bot = ask_input("5. 매수 명령 보낼 봇 ID/Username", os.getenv("TARGET_BOT_ID", "@GMGN_bsc_bot"))
     buy_amount = ask_input("6. 매수 금액 (BNB)", os.getenv("GMGN_BUY_AMOUNT", "0.1"))
 
@@ -80,13 +80,19 @@ MAX_RETRIES = 3 # 메시지 전송 최대 재시도 횟수
 
 # Binance Wallet URL 검증 및 CA 추출 정규식
 # 예: https://www.binance.com/en/binancewallet/0x97693439ea2f0ecdeb9135881e49f354656a911c/bsc
+# Binance Wallet URL 검증 및 CA 추출 정규식
+# 예: https://www.binance.com/en/binancewallet/0x97693439ea2f0ecdeb9135881e49f354656a911c/bsc
 BINANCE_URL_REGEX = r"https://www\.binance\.com/en/binancewallet/(0x[a-fA-F0-9]{40,})/bsc"
+
+# Newsbothub 포맷 정규식
+# 예: source: 0x97693439ea2f0ecdeb9135881e49f354656a911c (bsc)
+NEWSBOTHUB_SOURCE_REGEX = r"source:\s*(0x[a-fA-F0-9]{40,})\s*\(bsc\)"
 
 # --- 환경 변수 가져오기 ---
 api_id = os.getenv("API_ID")
 api_hash = os.getenv("API_HASH")
 session_name = os.getenv("SESSION_NAME", "alpha_sniper")
-source_bot_id_str = os.getenv("SOURCE_BOT_ID") # 모니터링할 채널/봇 (예: @NewListingsFeed)
+source_bot_id_str = os.getenv("SOURCE_BOT_ID") # 모니터링할 채널/봇 (콤마로 구분 가능)
 target_bot_id_str = os.getenv("TARGET_BOT_ID") # 매수 명령을 보낼 봇 (예: @GMGN_bsc_bot)
 phone_number = os.getenv("PHONE_NUMBER")
 
@@ -101,7 +107,14 @@ def parse_entity_id(entity_id_str):
     except ValueError:
         return entity_id_str
 
-source_bot_id = parse_entity_id(source_bot_id_str)
+# 다중 소스 ID 처리
+source_bot_ids = []
+if "," in source_bot_id_str:
+    for s_id in source_bot_id_str.split(","):
+        source_bot_ids.append(parse_entity_id(s_id.strip()))
+else:
+    source_bot_ids.append(parse_entity_id(source_bot_id_str))
+
 target_bot_id = parse_entity_id(target_bot_id_str)
 
 # 텔레그램 클라이언트 생성
@@ -139,40 +152,51 @@ async def shutdown(sig, loop):
 processed_cas = set()
 
 # --- 이벤트 핸들러 ---
-@client.on(events.NewMessage(chats=source_bot_id))
+# --- 이벤트 핸들러 ---
+@client.on(events.NewMessage(chats=source_bot_ids))
 async def handler(event):
     """
-    NewListingsFeed로부터 새 메시지를 받았을 때 실행되는 핸들러
-    Binance Wallet URL을 찾아 CA를 추출하고 매수 명령을 전송합니다.
+    NewListingsFeed 또는 Newsbothub로부터 새 메시지를 받았을 때 실행되는 핸들러
+    1. Binance Wallet URL (NewListingsFeed 스타일)
+    2. 'Binance alpha' 키워드 + 'source: ... (bsc)' (Newsbothub 스타일)
+    위 패턴을 찾아 CA를 추출하고 매수 명령을 전송합니다.
     """
     message_text = event.message.text
     sender_id = event.sender_id
     
     # logging.info(f"메시지 수신 ({sender_id}):\n{message_text}") # 디버그용 로그
-
-    # URL 매칭 확인
-    match = re.search(BINANCE_URL_REGEX, message_text)
     
-    if match:
-        bsc_ca = match.group(1)
-        
+    extracted_ca = None
+
+    # 1. Binance Wallet URL 매칭 확인 (우선순위 1)
+    url_match = re.search(BINANCE_URL_REGEX, message_text)
+    if url_match:
+        extracted_ca = url_match.group(1)
+        logging.info(f"패턴1(Binance URL) 발견! 추출된 CA: {extracted_ca}")
+
+    # 2. Newsbothub 스타일 확인 (우선순위 2 - URL 매칭 실패 시)
+    if not extracted_ca:
+        # 'Binance alpha' 키워드가 있는지 확인 (대소문자 무시)
+        if "binance alpha" in message_text.lower():
+            source_match = re.search(NEWSBOTHUB_SOURCE_REGEX, message_text, re.IGNORECASE)
+            if source_match:
+                extracted_ca = source_match.group(1)
+                logging.info(f"패턴2(Newsbothub/Binance alpha) 발견! 추출된 CA: {extracted_ca}")
+
+    if extracted_ca:
         # 중복 방지 체크
-        if bsc_ca in processed_cas:
-            logging.info(f"이미 처리된 CA입니다. 건너뜁니다: {bsc_ca}")
+        if extracted_ca in processed_cas:
+            logging.info(f"이미 처리된 CA입니다. 건너뜁니다: {extracted_ca}")
             return
             
-        logging.info(f"Binance Wallet URL 발견! 추출된 CA: {bsc_ca}")
-        
         # 매수 명령 구성 (/buy [CA] [Amount])
-        # 필요시 'bsc' 등을 뒤에 붙여야 하는지 GMGN 봇 사용법 확인 필요 (보통 /buy [CA] [Amount] 형식이 일반적)
-        command_to_send = f"/buy {bsc_ca} {GMGN_BUY_AMOUNT}"
+        command_to_send = f"/buy {extracted_ca} {GMGN_BUY_AMOUNT}"
         
         logging.info(f"매수 명령 전송 시도: {command_to_send}")
         if await send_message_with_retry(target_bot_id, command_to_send, "BUY 명령"):
-            # 전송 성공 시에만 처리된 목록에 추가 (혹은 시도만 해도 추가할지 결정, 여기선 시도 시 추가)
-            processed_cas.add(bsc_ca)
+            processed_cas.add(extracted_ca)
     else:
-        # logging.info("Binance Wallet URL을 포함하지 않은 메시지입니다.")
+        # logging.info("유효한 CA 패턴을 찾지 못했습니다.")
         pass
 
 async def main():
