@@ -78,6 +78,9 @@ GMGN_BUY_AMOUNT = float(os.getenv("GMGN_BUY_AMOUNT", "0.1"))
 # 재시도 설정
 MAX_RETRIES = 3 # 메시지 전송 최대 재시도 횟수
 
+# 자동 매도 설정
+AUTO_SELL_DELAY_SECONDS = 15 * 60 # 15분 후 자동 매도
+
 # Binance Wallet URL 검증 및 CA 추출 정규식
 # 예: https://www.binance.com/en/binancewallet/0x97693439ea2f0ecdeb9135881e49f354656a911c/bsc
 # Binance Wallet URL 검증 및 CA 추출 정규식
@@ -137,6 +140,21 @@ async def send_message_with_retry(target, message, command_desc, reply_to=None):
                 await asyncio.sleep(1) # 잠시 대기
     return False
 
+# --- 자동 매도 스케줄링 함수 ---
+async def schedule_auto_sell(ca: str, delay: int):
+    """지정된 시간 후 자동으로 매도 명령을 전송합니다."""
+    try:
+        logging.info(f"자동 매도 예약됨: {ca} ({delay}초 후)")
+        await asyncio.sleep(delay)
+        
+        sell_command = f"/sell {ca} 100%"
+        logging.info(f"자동 매도 실행: {sell_command}")
+        await send_message_with_retry(target_bot_id, sell_command, "자동 SELL 명령")
+    except asyncio.CancelledError:
+        logging.info(f"자동 매도 취소됨: {ca}")
+    except Exception as e:
+        logging.error(f"자동 매도 실패 ({ca}): {e}")
+
 # --- 종료 처리 함수 ---
 async def shutdown(sig, loop):
     logging.info(f"신호 {sig.name} 수신됨. 종료 시작...")
@@ -195,6 +213,8 @@ async def handler(event):
         logging.info(f"매수 명령 전송 시도: {command_to_send}")
         if await send_message_with_retry(target_bot_id, command_to_send, "BUY 명령"):
             processed_cas.add(extracted_ca)
+            # 자동 매도 예약
+            asyncio.create_task(schedule_auto_sell(extracted_ca, AUTO_SELL_DELAY_SECONDS))
     else:
         # logging.info("유효한 CA 패턴을 찾지 못했습니다.")
         pass
