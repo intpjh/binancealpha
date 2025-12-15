@@ -44,6 +44,10 @@ def run_setup_wizard():
     source_bot = ask_input("4. 감시할 채널 ID/Username (여러 개는 콤마로 구분)", os.getenv("SOURCE_BOT_ID", "@NewListingsFeed"))
     target_bot = ask_input("5. 매수 명령 보낼 봇 ID/Username", os.getenv("TARGET_BOT_ID", "@GMGN_bsc_bot"))
     buy_amount = ask_input("6. 매수 금액 (BNB)", os.getenv("GMGN_BUY_AMOUNT", "0.1"))
+    
+    print("\n--- 자동 매도 설정 ---")
+    auto_sell_delay = ask_input("7. 자동 매도 대기 시간 (분)", os.getenv("AUTO_SELL_DELAY_MINUTES", "15"))
+    auto_sell_percent = ask_input("8. 자동 매도 비율 (%)", os.getenv("AUTO_SELL_PERCENT", "100"))
 
     # .env 파일 저장
     with open(ENV_PATH, "w", encoding="utf-8") as f:
@@ -55,6 +59,8 @@ def run_setup_wizard():
         f.write(f"SOURCE_BOT_ID={source_bot}\n")
         f.write(f"TARGET_BOT_ID={target_bot}\n")
         f.write(f"GMGN_BUY_AMOUNT={buy_amount}\n")
+        f.write(f"AUTO_SELL_DELAY_MINUTES={auto_sell_delay}\n")
+        f.write(f"AUTO_SELL_PERCENT={auto_sell_percent}\n")
     
     print(f"\n✅ 설정이 '{ENV_PATH}' 파일에 저장되었습니다!\n")
     return True
@@ -79,7 +85,9 @@ GMGN_BUY_AMOUNT = float(os.getenv("GMGN_BUY_AMOUNT", "0.1"))
 MAX_RETRIES = 3 # 메시지 전송 최대 재시도 횟수
 
 # 자동 매도 설정
-AUTO_SELL_DELAY_SECONDS = 15 * 60 # 15분 후 자동 매도
+AUTO_SELL_DELAY_MINUTES = float(os.getenv("AUTO_SELL_DELAY_MINUTES", "15")) # 기본 15분
+AUTO_SELL_DELAY_SECONDS = int(AUTO_SELL_DELAY_MINUTES * 60)
+AUTO_SELL_PERCENT = float(os.getenv("AUTO_SELL_PERCENT", "100")) # 기본 100%
 
 # Binance Wallet URL 검증 및 CA 추출 정규식
 # 예: https://www.binance.com/en/binancewallet/0x97693439ea2f0ecdeb9135881e49f354656a911c/bsc
@@ -147,7 +155,7 @@ async def schedule_auto_sell(ca: str, delay: int):
         logging.info(f"자동 매도 예약됨: {ca} ({delay}초 후)")
         await asyncio.sleep(delay)
         
-        sell_command = f"/sell {ca} 100%"
+        sell_command = f"/sell {ca} {AUTO_SELL_PERCENT}%"
         logging.info(f"자동 매도 실행: {sell_command}")
         await send_message_with_retry(target_bot_id, sell_command, "자동 SELL 명령")
     except asyncio.CancelledError:
