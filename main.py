@@ -203,7 +203,7 @@ async def handle_nlf_websocket():
             # API 키를 헤더에 포함하여 연결 (NLF API 형식)
             headers = {"authorization": f"Bearer {NLF_API_KEY}"}
             
-            async with websockets.connect(NLF_WS_URL, ssl=ssl_context, extra_headers=headers) as websocket:
+            async with websockets.connect(NLF_WS_URL, ssl=ssl_context, additional_headers=headers) as websocket:
                 logging.info("NLF WebSocket 연결 성공, 메시지 수신 대기 중...")
                 
                 async for message in websocket:
