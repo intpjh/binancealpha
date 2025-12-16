@@ -204,28 +204,33 @@ async def handle_nlf_websocket():
                     try:
                         data = json.loads(message)
                         
-                        # Binance Alpha + BSC 필터링
+                        # Binance Alpha 필터링
                         if (data.get("exchange") == "binance" and 
-                            data.get("type") == "alpha" and 
-                            data.get("chain") == "bsc"):
+                            data.get("type") == "alpha"):
                             
-                            ca = data.get("ca")
-                            if ca:
-                                logging.info(f"NLF WebSocket에서 Binance Alpha BSC 발견: {ca}")
+                            # detections 배열에서 BSC 체인 찾기
+                            detections = data.get("detections", [])
+                            for detection in detections:
+                                onchain = detection.get("onchain", {})
+                                chain = onchain.get("chain")
+                                ca = onchain.get("contract")
                                 
-                                # 중복 방지 체크
-                                if ca in processed_cas:
-                                    logging.info(f"이미 처리된 CA입니다 (WebSocket). 건너뜁니다: {ca}")
-                                    continue
-                                
-                                # 매수 명령 전송
-                                command_to_send = f"/buy {ca} {GMGN_BUY_AMOUNT}"
-                                logging.info(f"매수 명령 전송 시도 (WebSocket): {command_to_send}")
-                                
-                                if await send_message_with_retry(target_bot_id, command_to_send, "BUY 명령 (WebSocket)"):
-                                    processed_cas.add(ca)
-                                    # 자동 매도 예약
-                                    asyncio.create_task(schedule_auto_sell(ca, AUTO_SELL_DELAY_SECONDS))
+                                if chain == "bsc" and ca:
+                                    logging.info(f"NLF WebSocket에서 Binance Alpha BSC 발견: {ca}")
+                                    
+                                    # 중복 방지 체크
+                                    if ca in processed_cas:
+                                        logging.info(f"이미 처리된 CA입니다 (WebSocket). 건너뜁니다: {ca}")
+                                        continue
+                                    
+                                    # 매수 명령 전송
+                                    command_to_send = f"/buy {ca} {GMGN_BUY_AMOUNT}"
+                                    logging.info(f"매수 명령 전송 시도 (WebSocket): {command_to_send}")
+                                    
+                                    if await send_message_with_retry(target_bot_id, command_to_send, "BUY 명령 (WebSocket)"):
+                                        processed_cas.add(ca)
+                                        # 자동 매도 예약
+                                        asyncio.create_task(schedule_auto_sell(ca, AUTO_SELL_DELAY_SECONDS))
                         
                     except json.JSONDecodeError:
                         logging.error(f"WebSocket 메시지 파싱 실패: {message}")
