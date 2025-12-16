@@ -103,7 +103,7 @@ AUTO_SELL_PERCENT = float(os.getenv("AUTO_SELL_PERCENT", "100")) # 기본 100%
 # NLF WebSocket 설정
 NLF_API_KEY = os.getenv("NLF_API_KEY", "")  # NLF WebSocket API 키
 NLF_ENABLED = os.getenv("NLF_ENABLED", "false").lower() == "true"  # WebSocket 활성화 여부
-NLF_WS_URL = "wss://newlistings.pro/v1/new-listings"  # NLF WebSocket URL
+NLF_WS_URL = "wss://tokyo.newlistings.pro/v1/new-listings"  # NLF WebSocket URL
 
 # Binance Wallet URL 검증 및 CA 추출 정규식
 # 예: https://www.binance.com/en/binancewallet/0x97693439ea2f0ecdeb9135881e49f354656a911c/bsc
