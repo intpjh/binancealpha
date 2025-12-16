@@ -200,11 +200,11 @@ async def handle_nlf_websocket():
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
             
-            async with websockets.connect(NLF_WS_URL, ssl=ssl_context) as websocket:
-                # 인증 메시지 전송
-                auth_message = json.dumps({"key": NLF_API_KEY})
-                await websocket.send(auth_message)
-                logging.info("NLF WebSocket 인증 완료, 메시지 수신 대기 중...")
+            # API 키를 헤더에 포함하여 연결
+            headers = {"Authorization": f"Bearer {NLF_API_KEY}"}
+            
+            async with websockets.connect(NLF_WS_URL, ssl=ssl_context, extra_headers=headers) as websocket:
+                logging.info("NLF WebSocket 연결 성공, 메시지 수신 대기 중...")
                 
                 async for message in websocket:
                     try:
