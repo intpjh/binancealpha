@@ -4,6 +4,7 @@ import logging
 import asyncio
 import signal
 import json
+import ssl
 from dotenv import load_dotenv, set_key
 from telethon import TelegramClient, events
 import websockets
@@ -194,7 +195,12 @@ async def handle_nlf_websocket():
     while True:
         try:
             logging.info(f"NLF WebSocket 연결 중: {NLF_WS_URL}")
-            async with websockets.connect(NLF_WS_URL) as websocket:
+            # SSL 인증서 검증 비활성화
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            async with websockets.connect(NLF_WS_URL, ssl=ssl_context) as websocket:
                 # 인증 메시지 전송
                 auth_message = json.dumps({"key": NLF_API_KEY})
                 await websocket.send(auth_message)
