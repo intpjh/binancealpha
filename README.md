@@ -12,6 +12,7 @@
 - **스마트 파싱**: 'Binance alpha' 키워드가 포함된 Newsbothub 스타일 메시지도 자동으로 분석합니다.
 - **중복 방지**: 이미 매수 명령을 보낸 CA는 세션 내에서 다시 처리하지 않아 중복 매수를 방지합니다.
 - **자동 매도**: 매수 후 설정한 시간이 지나면 자동으로 매도 명령을 전송합니다 (시간과 비율 설정 가능).
+- **NLF WebSocket**: NewListingsFeed WebSocket API를 통해 실시간 리스팅 정보를 수신할 수 있습니다 (선택 사항).
 
 ## 설치 방법
 
@@ -58,6 +59,10 @@ PHONE_NUMBER=+821012345678
 # 7. 자동 매도 설정 (선택 사항)
 AUTO_SELL_DELAY_MINUTES=15  # 매수 후 몇 분 뒤 매도할지
 AUTO_SELL_PERCENT=100        # 매도 비율 (%)
+
+# 8. NLF WebSocket 설정 (선택 사항)
+NLF_ENABLED=false            # WebSocket 사용 여부 (true/false)
+NLF_API_KEY=your_api_key     # t.me/NLF_websocket_bot에서 발급
 ```
 
 ## 실행 방법

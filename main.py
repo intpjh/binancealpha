@@ -3,8 +3,10 @@ import re
 import logging
 import asyncio
 import signal
+import json
 from dotenv import load_dotenv, set_key
 from telethon import TelegramClient, events
+import websockets
 
 # 로깅 설정
 logging.basicConfig(format='[%(levelname) 5s/%(asctime)s] %(name)s: %(message)s',
@@ -48,6 +50,12 @@ def run_setup_wizard():
     print("\n--- 자동 매도 설정 ---")
     auto_sell_delay = ask_input("7. 자동 매도 대기 시간 (분)", os.getenv("AUTO_SELL_DELAY_MINUTES", "15"))
     auto_sell_percent = ask_input("8. 자동 매도 비율 (%)", os.getenv("AUTO_SELL_PERCENT", "100"))
+    
+    print("\n--- NLF WebSocket 설정 (선택) ---")
+    nlf_enabled = ask_input("9. NLF WebSocket 사용 (true/false)", os.getenv("NLF_ENABLED", "false"))
+    nlf_api_key = ""
+    if nlf_enabled.lower() == "true":
+        nlf_api_key = ask_input("10. NLF API 키 (t.me/NLF_websocket_bot에서 발급)", os.getenv("NLF_API_KEY", ""))
 
     # .env 파일 저장
     with open(ENV_PATH, "w", encoding="utf-8") as f:
@@ -61,6 +69,9 @@ def run_setup_wizard():
         f.write(f"GMGN_BUY_AMOUNT={buy_amount}\n")
         f.write(f"AUTO_SELL_DELAY_MINUTES={auto_sell_delay}\n")
         f.write(f"AUTO_SELL_PERCENT={auto_sell_percent}\n")
+        f.write(f"NLF_ENABLED={nlf_enabled}\n")
+        if nlf_api_key:
+            f.write(f"NLF_API_KEY={nlf_api_key}\n")
     
     print(f"\n✅ 설정이 '{ENV_PATH}' 파일에 저장되었습니다!\n")
     return True
@@ -88,6 +99,11 @@ MAX_RETRIES = 3 # 메시지 전송 최대 재시도 횟수
 AUTO_SELL_DELAY_MINUTES = float(os.getenv("AUTO_SELL_DELAY_MINUTES", "15")) # 기본 15분
 AUTO_SELL_DELAY_SECONDS = int(AUTO_SELL_DELAY_MINUTES * 60)
 AUTO_SELL_PERCENT = float(os.getenv("AUTO_SELL_PERCENT", "100")) # 기본 100%
+
+# NLF WebSocket 설정
+NLF_API_KEY = os.getenv("NLF_API_KEY", "")  # NLF WebSocket API 키
+NLF_ENABLED = os.getenv("NLF_ENABLED", "false").lower() == "true"  # WebSocket 활성화 여부
+NLF_WS_URL = "wss://newlistings.pro/v1/new-listings"  # NLF WebSocket URL
 
 # Binance Wallet URL 검증 및 CA 추출 정규식
 # 예: https://www.binance.com/en/binancewallet/0x97693439ea2f0ecdeb9135881e49f354656a911c/bsc
@@ -163,6 +179,68 @@ async def schedule_auto_sell(ca: str, delay: int):
     except Exception as e:
         logging.error(f"자동 매도 실패 ({ca}): {e}")
 
+# --- NLF WebSocket 핸들러 ---
+async def handle_nlf_websocket():
+    """NLF WebSocket에 연결하여 실시간 리스팅 정보를 수신합니다."""
+    if not NLF_ENABLED:
+        logging.info("NLF WebSocket이 비활성화되어 있습니다.")
+        return
+    
+    if not NLF_API_KEY:
+        logging.warning("NLF_API_KEY가 설정되지 않았습니다. WebSocket 연결을 건너뜁니다.")
+        return
+    
+    retry_delay = 5
+    while True:
+        try:
+            logging.info(f"NLF WebSocket 연결 중: {NLF_WS_URL}")
+            async with websockets.connect(NLF_WS_URL) as websocket:
+                # 인증 메시지 전송
+                auth_message = json.dumps({"key": NLF_API_KEY})
+                await websocket.send(auth_message)
+                logging.info("NLF WebSocket 인증 완료, 메시지 수신 대기 중...")
+                
+                async for message in websocket:
+                    try:
+                        data = json.loads(message)
+                        
+                        # Binance Alpha + BSC 필터링
+                        if (data.get("exchange") == "binance" and 
+                            data.get("type") == "alpha" and 
+                            data.get("chain") == "bsc"):
+                            
+                            ca = data.get("ca")
+                            if ca:
+                                logging.info(f"NLF WebSocket에서 Binance Alpha BSC 발견: {ca}")
+                                
+                                # 중복 방지 체크
+                                if ca in processed_cas:
+                                    logging.info(f"이미 처리된 CA입니다 (WebSocket). 건너뜁니다: {ca}")
+                                    continue
+                                
+                                # 매수 명령 전송
+                                command_to_send = f"/buy {ca} {GMGN_BUY_AMOUNT}"
+                                logging.info(f"매수 명령 전송 시도 (WebSocket): {command_to_send}")
+                                
+                                if await send_message_with_retry(target_bot_id, command_to_send, "BUY 명령 (WebSocket)"):
+                                    processed_cas.add(ca)
+                                    # 자동 매도 예약
+                                    asyncio.create_task(schedule_auto_sell(ca, AUTO_SELL_DELAY_SECONDS))
+                        
+                    except json.JSONDecodeError:
+                        logging.error(f"WebSocket 메시지 파싱 실패: {message}")
+                    except Exception as e:
+                        logging.error(f"WebSocket 메시지 처리 중 오류: {e}")
+                        
+        except websockets.exceptions.WebSocketException as e:
+            logging.error(f"NLF WebSocket 연결 오류: {e}")
+        except Exception as e:
+            logging.error(f"NLF WebSocket 예상치 못한 오류: {e}")
+        
+        logging.info(f"{retry_delay}초 후 재연결 시도...")
+        await asyncio.sleep(retry_delay)
+        retry_delay = min(retry_delay * 2, 60)  # 최대 60초까지 증가
+
 # --- 종료 처리 함수 ---
 async def shutdown(sig, loop):
     logging.info(f"신호 {sig.name} 수신됨. 종료 시작...")
@@ -202,12 +280,12 @@ async def handler(event):
 
     # 2. Newsbothub 스타일 확인 (우선순위 2 - URL 매칭 실패 시)
     if not extracted_ca:
-        # 'Binance alpha' 키워드가 있는지 확인 (대소문자 무시)
-        if "binance alpha" in message_text.lower():
+        # 'live on Binance alpha' 키워드가 있는지 확인 (대소문자 무시)
+        if "live on Binance alpha" in message_text.lower():
             source_match = re.search(NEWSBOTHUB_SOURCE_REGEX, message_text, re.IGNORECASE)
             if source_match:
                 extracted_ca = source_match.group(1)
-                logging.info(f"패턴2(Newsbothub/Binance alpha) 발견! 추출된 CA: {extracted_ca}")
+                logging.info(f"패턴2(Newsbothub/live on Binance alpha) 발견! 추출된 CA: {extracted_ca}")
 
     if extracted_ca:
         # 중복 방지 체크
@@ -242,6 +320,14 @@ async def main():
     logging.info(f"모니터링 대상: {', '.join(map(str, source_bot_ids))}")
     logging.info(f"매수 명령 대상: {target_bot_id}")
     logging.info(f"매수 금액: {GMGN_BUY_AMOUNT} BNB")
+    
+    # NLF WebSocket 시작
+    if NLF_ENABLED and NLF_API_KEY:
+        logging.info(f"NLF WebSocket 활성화: {NLF_WS_URL}")
+        asyncio.create_task(handle_nlf_websocket())
+    else:
+        logging.info("NLF WebSocket 비활성화 (텔레그램만 사용)")
+    
     logging.info("종료하려면 Ctrl+C를 누르세요...")
 
     await client.disconnected
